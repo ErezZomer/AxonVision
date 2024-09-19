@@ -1,26 +1,21 @@
 from datetime import datetime
 import multiprocessing as mp
 import multiprocessing.shared_memory as sm
+import numpy as np
 
 import cv2
 
 from consts import DELAY
-from shared_frame import SharedFrame
 
 class Viewer:
     def __init__(self, 
-                 sf: SharedFrame, 
-                 in_queue: mp.Queue, 
-                 detection: mp.Condition, 
-                 viewed: mp.Condition, 
+                 detections_q: mp.Queue, 
                  delay: int = DELAY,
                  debug: bool = False) -> None:
-        self._sf = sf
-        self._in_queue = in_queue
-        self._detection_cond = detection
-        self._viewed_cond = viewed
+        self._detections_q = detections_q
         self._delay = delay
         self._debug = debug
+
     def add_time(self, image):
         # Get the current time
         now = datetime.now()
@@ -42,10 +37,8 @@ class Viewer:
 
         return image
 
-    def add_detections(self, image):
-        print(f"{self.__class__.__name__}: waiting for detections")
-        msg = self._in_queue.get()
-        print(f"{self.__class__.__name__}: got new detections")
+    def add_detections(self, msg: dict):
+        image = msg.get("frame", np.array([]))
         detections = msg.get("detections", [])
         
         for (x1, y1, x2, y2) in detections:
@@ -58,22 +51,16 @@ class Viewer:
         return image
 
     def run(self):
-        with self._viewed_cond:
-            self._viewed_cond.notify()
         while True:
-            #with self._detection_cond:
-            #    print(f"{self.__class__.__name__}: waiting for detection condition")
-            #    self._detection_cond.wait()
-            image = self._sf.read_frame()
+            print(f"{self.__class__.__name__}: waiting for detection msg")
+            msg = self._detections_q.get()
+            image = self.add_detections(msg)
             image = self.add_time(image)
-            #image = self.add_detections(image)
+
             #image= self.add_blur(image)            
 
-                # Display the frame using OpenCV
-            cv2.imshow("Detections and Time", image)
-            with self._viewed_cond:
-                self._viewed_cond.notify()
-    
+            # Display the frame using OpenCV
+            cv2.imshow("Detections and Time", image)    
                 # Wait for a keypress to close the window
             cv2.waitKey(self._delay)
         

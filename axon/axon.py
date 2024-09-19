@@ -1,29 +1,28 @@
 import argparse
 import multiprocessing as mp
 
-from consts import DELAY
+from consts import DELAY, MAX_QUEUE_SIZE
 from streamer import Streamer
 from detector import Detector
 from viewer import Viewer
 
 class Axon:
     def __init__(self, file_path: str, debug: bool = False) -> None:
-        self._new_frame_cond = mp.Condition()
-        self._new_detection_cond = mp.Condition()
-        self._viewed_cond = mp.Condition()
-        self._detections_q = mp.Queue()
+        self._frames_q = mp.Queue(MAX_QUEUE_SIZE)
+        self._detections_q = mp.Queue(MAX_QUEUE_SIZE)
         self._debug = debug
-        self._streamer = Streamer(file_path, self._new_frame_cond, self._viewed_cond, DELAY, self._debug)
-        buffer = self._streamer.buffer
-        self._detector = Detector(buffer, self._detections_q, self._new_frame_cond, self._new_detection_cond, self._debug)
-        self._viewer = Viewer(buffer, self._detections_q, self._new_detection_cond, self._viewed_cond, DELAY, self._debug)
+        self._streamer = Streamer(file_path, self._frames_q, DELAY, self._debug)
+        self._detector = Detector(self._frames_q, self._detections_q, self._debug)
+        self._viewer = Viewer(self._detections_q, DELAY, self._debug)
         self._processes = []
-        for obj in (self._streamer, self._detector, self._viewer):
+        objects = []
+        objects.append(self._streamer)
+        objects.append(self._detector)
+        objects.append(self._viewer)
+        for obj in objects:
             self._processes.append(mp.Process(target=obj.run))
     
     def run(self):
-        with self._viewed_cond:
-            self._viewed_cond.notify_all()
         for p in self._processes:
             p.start()
         

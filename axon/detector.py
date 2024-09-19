@@ -3,29 +3,22 @@ import imutils
 
 from multiprocessing import Queue, Condition
 
-from shared_frame import SharedFrame
 class Detector:
     def __init__(self,
-                 sf: SharedFrame,
-                 out_queue: Queue,
-                 new_frame: Condition,
-                 new_detection: Condition,
+                 frames_q: Queue,
+                 detections_q: Queue,
                  debug: bool = False) -> None:
-        self._sf = sf
-        self._out_queue = out_queue
-        self._frame_cond = new_frame
-        self._detection_cond = new_detection
-        
+        self._frames_q = frames_q
+        self._detections_q = detections_q
+        self._debug = debug
     
     def run(self):
         counter = 0
         prev_frame = None
         while True:
-            with self._frame_cond:
-                print(f"{self.__class__.__name__}: waiting for frame condition")
-                self._frame_cond.wait()
-                print(f"{self.__class__.__name__}: reading frame from buffer")
-                frame = self._sf.read_frame()
+            print(f"{self.__class__.__name__}: waiting for frame msg")
+            msg = self._frames_q.get()
+            frame = msg["frame"]
             gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             if counter == 0:
                 prev_frame = gray_frame
@@ -38,10 +31,6 @@ class Detector:
             cnts = imutils.grab_contours(cnts)
             prev_frame = gray_frame
             counter += 1
-            detections = {
-                "detections": cnts
-            }
-            with self._detection_cond:
-                print(f"{self.__class__.__name__}: sending detections")
-                self._out_queue.put(detections)
-                self._detection_cond.notify()
+            msg["counturs"] = cnts
+            print(f"{self.__class__.__name__}: sending detections")
+            self._detections_q.put(msg)
